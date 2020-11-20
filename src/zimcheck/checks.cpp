@@ -96,7 +96,6 @@ public: // functions
         , url_check(_url_check)
         , url_check_external(_url_check_external)
         , empty_check(_empty_check)
-        , previousIndex(-1)
     {}
 
 
@@ -117,11 +116,10 @@ private: // functions
 private: // data
     const zim::Archive& archive;
     ErrorLogger& reporter;
-    bool redundant_data;
-    bool url_check;
-    bool url_check_external;
-    bool empty_check;
-    int previousIndex;
+    const bool redundant_data;
+    const bool url_check;
+    const bool url_check_external;
+    const bool empty_check;
     // Article are store in a map<hash, list<index>>.
     // So all article with the same hash will be stored in the same list.
     std::map<unsigned int, std::list<zim::entry_index_type>> hash_main;
@@ -224,11 +222,12 @@ void ArticleChecker::check_internal_links(zim::Item item, const LinkCollection& 
 
 void ArticleChecker::check_internal_links(zim::Item item, const GroupedLinkCollection& links)
 {
+    zim::entry_index_type previousIndex(-1);
     for(const auto &p: links)
     {
         const std::string link = p.first;
         if (!archive.hasEntryByPath(link)) {
-            int index = item.getIndex();
+            const zim::entry_index_type index = item.getIndex();
             if (previousIndex != index)
             {
                 std::ostringstream ss;
