@@ -89,11 +89,19 @@ public: // types
     typedef std::vector<html_link> LinkCollection;
 
 public: // functions
-    ArticleChecker(const zim::Archive& _archive, ErrorLogger& _reporter)
+    ArticleChecker(const zim::Archive& _archive, ErrorLogger& _reporter, bool _redundant_data, bool _url_check, bool _url_check_external, bool _empty_check)
         : archive(_archive)
         , reporter(_reporter)
+        , redundant_data(_redundant_data)
+        , url_check(_url_check)
+        , url_check_external(_url_check_external)
+        , empty_check(_empty_check)
+        , previousIndex(-1)
     {}
 
+
+    void check(zim::Entry entry);
+    void detect_redundant_articles(ProgressBar& progress);
     void check_internal_links(zim::Item item, const LinkCollection& links);
     void check_external_links(zim::Item item, const LinkCollection& links);
 
@@ -109,8 +117,66 @@ private: // functions
 private: // data
     const zim::Archive& archive;
     ErrorLogger& reporter;
-    int previousIndex = -1;
+    bool redundant_data;
+    bool url_check;
+    bool url_check_external;
+    bool empty_check;
+    int previousIndex;
+    // Article are store in a map<hash, list<index>>.
+    // So all article with the same hash will be stored in the same list.
+    std::map<unsigned int, std::list<zim::entry_index_type>> hash_main;
 };
+
+void ArticleChecker::check(zim::Entry entry)
+{
+    const auto path = entry.getPath();
+    const char ns = archive.hasNewNamespaceScheme() ? 'C' : path[0];
+
+    if (entry.isRedirect() || ns == 'M') {
+        return;
+    }
+
+    if (empty_check && (ns=='A' || ns == 'I')) {
+        auto item = entry.getItem();
+        if (item.getSize() == 0) {
+            std::ostringstream ss;
+            ss << "Entry " << path << " is empty";
+            reporter.addReportMsg(TestType::EMPTY, ss.str());
+            reporter.setTestResult(TestType::EMPTY, false);
+        }
+    }
+
+    auto item = entry.getItem();
+
+    if (item.getSize() == 0) {
+        return;
+    }
+
+    std::string data;
+    if (redundant_data || item.getMimetype() == "text/html")
+        data = item.getData();
+
+    if(redundant_data)
+        hash_main[adler32(data)].push_back( item.getIndex() );
+
+    if (item.getMimetype() != "text/html")
+        return;
+
+    ArticleChecker::LinkCollection links;
+    if (url_check || url_check_external) {
+        links = generic_getLinks(data);
+    }
+
+    if(url_check)
+    {
+        check_internal_links(item, links);
+    }
+
+    if (url_check_external)
+    {
+        check_external_links(item, links);
+    }
+}
 
 void ArticleChecker::check_internal_links(zim::Item item, const LinkCollection& links)
 {
@@ -193,102 +259,58 @@ void ArticleChecker::check_external_links(zim::Item item, const LinkCollection& 
     }
 }
 
+void ArticleChecker::detect_redundant_articles(ProgressBar& progress)
+{
+    std::cout << "[INFO] Searching for redundant articles..." << std::endl;
+    std::cout << "  Verifying Similar Articles for redundancies..." << std::endl;
+    std::ostringstream output_details;
+    progress.reset(hash_main.size());
+    for(const auto &it: hash_main)
+    {
+        progress.report();
+        auto l = it.second;
+        while ( !l.empty() ) {
+            const auto e1 = archive.getEntryByPath(l.front());
+            l.pop_front();
+            if ( !l.empty() ) {
+                // The way we have constructed `l`, e1 MUST BE an item
+                const std::string s1 = e1.getItem().getData();
+                decltype(l) articlesDifferentFromE1;
+                for(auto other : l) {
+                    auto e2 = archive.getEntryByPath(other);
+                    std::string s2 = e2.getItem().getData();
+                    if (s1 != s2 ) {
+                        articlesDifferentFromE1.push_back(other);
+                        continue;
+                    }
+
+                    reporter.setTestResult(TestType::REDUNDANT, false);
+                    std::ostringstream ss;
+                    ss << e1.getTitle() << " (idx " << e1.getIndex() << ") and "
+                       << e2.getTitle() << " (idx " << e2.getIndex() << ")";
+                    reporter.addReportMsg(TestType::REDUNDANT, ss.str());
+                }
+                l.swap(articlesDifferentFromE1);
+            }
+        }
+    }
+}
+
 } // unnamed namespace
 
 void test_articles(const zim::Archive& archive, ErrorLogger& reporter, ProgressBar progress,
                    bool redundant_data, bool url_check, bool url_check_external, bool empty_check) {
-    ArticleChecker articleChecker(archive, reporter);
+    ArticleChecker articleChecker(archive, reporter, redundant_data, url_check, url_check_external, empty_check);
     std::cout << "[INFO] Verifying Articles' content..." << std::endl;
-    // Article are store in a map<hash, list<index>>.
-    // So all article with the same hash will be stored in the same list.
-    std::map<unsigned int, std::list<zim::entry_index_type>> hash_main;
 
     progress.reset(archive.getEntryCount());
     for (auto& entry:archive.iterEfficient()) {
         progress.report();
-        auto path = entry.getPath();
-        char ns = archive.hasNewNamespaceScheme() ? 'C' : path[0];
-
-        if (entry.isRedirect() || ns == 'M') {
-            continue;
-        }
-
-        if (empty_check && (ns=='A' || ns == 'I')) {
-            auto item = entry.getItem();
-            if (item.getSize() == 0) {
-                std::ostringstream ss;
-                ss << "Entry " << path << " is empty";
-                reporter.addReportMsg(TestType::EMPTY, ss.str());
-                reporter.setTestResult(TestType::EMPTY, false);
-            }
-        }
-
-        auto item = entry.getItem();
-
-        if (item.getSize() == 0) {
-            continue;
-        }
-
-        std::string data;
-        if (redundant_data || item.getMimetype() == "text/html")
-            data = item.getData();
-
-        if(redundant_data)
-            hash_main[adler32(data)].push_back( item.getIndex() );
-
-        if (item.getMimetype() != "text/html")
-            continue;
-
-        ArticleChecker::LinkCollection links;
-        if (url_check || url_check_external) {
-            links = generic_getLinks(data);
-        }
-
-        if(url_check)
-        {
-            articleChecker.check_internal_links(item, links);
-        }
-
-        if (url_check_external)
-        {
-            articleChecker.check_external_links(item, links);
-        }
+        articleChecker.check(entry);
     }
 
     if (redundant_data)
     {
-        std::cout << "[INFO] Searching for redundant articles..." << std::endl;
-        std::cout << "  Verifying Similar Articles for redundancies..." << std::endl;
-        std::ostringstream output_details;
-        progress.reset(hash_main.size());
-        for(const auto &it: hash_main)
-        {
-            progress.report();
-            auto l = it.second;
-            while ( !l.empty() ) {
-                const auto e1 = archive.getEntryByPath(l.front());
-                l.pop_front();
-                if ( !l.empty() ) {
-                    // The way we have constructed `l`, e1 MUST BE an item
-                    const std::string s1 = e1.getItem().getData();
-                    decltype(l) articlesDifferentFromE1;
-                    for(auto other : l) {
-                        auto e2 = archive.getEntryByPath(other);
-                        std::string s2 = e2.getItem().getData();
-                        if (s1 != s2 ) {
-                            articlesDifferentFromE1.push_back(other);
-                            continue;
-                        }
-
-                        reporter.setTestResult(TestType::REDUNDANT, false);
-                        std::ostringstream ss;
-                        ss << e1.getTitle() << " (idx " << e1.getIndex() << ") and "
-                           << e2.getTitle() << " (idx " << e2.getIndex() << ")";
-                        reporter.addReportMsg(TestType::REDUNDANT, ss.str());
-                    }
-                    l.swap(articlesDifferentFromE1);
-                }
-            }
-        }
+        articleChecker.detect_redundant_articles(progress);
     }
 }
