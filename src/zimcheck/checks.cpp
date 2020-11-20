@@ -86,6 +86,8 @@ namespace
 class ArticleChecker
 {
 public: // types
+    typedef std::vector<html_link> LinkCollection;
+
     typedef std::vector<std::string> StringCollection;
 
     // collection of links grouped into sets of equivalent normalized links
@@ -98,6 +100,8 @@ public: // functions
     {}
 
     void check_internal_links(zim::Item item, const GroupedLinkCollection& links);
+
+    void check_external_links(zim::Item item, const LinkCollection& links);
 
 private: // data
     const zim::Archive& archive;
@@ -123,6 +127,21 @@ void ArticleChecker::check_internal_links(zim::Item item, const GroupedLinkColle
                 previousIndex = index;
             }
             reporter.setTestResult(TestType::URL_INTERNAL, false);
+        }
+    }
+}
+
+void ArticleChecker::check_external_links(zim::Item item, const LinkCollection& links)
+{
+    for (const auto &l: links)
+    {
+        if (l.attribute == "src" && l.isExternalUrl())
+        {
+            std::ostringstream ss;
+            ss << l.link << " is an external dependence in article " << item.getPath();
+            reporter.addReportMsg(TestType::URL_EXTERNAL, ss.str());
+            reporter.setTestResult(TestType::URL_EXTERNAL, false);
+            break;
         }
     }
 }
@@ -173,7 +192,7 @@ void test_articles(const zim::Archive& archive, ErrorLogger& reporter, ProgressB
         if (item.getMimetype() != "text/html")
             continue;
 
-        std::vector<html_link> links;
+        ArticleChecker::LinkCollection links;
         if (url_check || url_check_external) {
             links = generic_getLinks(data);
         }
@@ -223,17 +242,7 @@ void test_articles(const zim::Archive& archive, ErrorLogger& reporter, ProgressB
 
         if (url_check_external)
         {
-            for (const auto &l: links)
-            {
-                if (l.attribute == "src" && l.isExternalUrl())
-                {
-                    std::ostringstream ss;
-                    ss << l.link << " is an external dependence in article " << path;
-                    reporter.addReportMsg(TestType::URL_EXTERNAL, ss.str());
-                    reporter.setTestResult(TestType::URL_EXTERNAL, false);
-                    break;
-                }
-            }
+            articleChecker.check_external_links(item, links);
         }
     }
 
