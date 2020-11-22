@@ -115,6 +115,7 @@ void test_metadata(const zim::Archive& archive, ErrorLogger& reporter);
 void test_favicon(const zim::Archive& archive, ErrorLogger& reporter);
 void test_mainpage(const zim::Archive& archive, ErrorLogger& reporter);
 void test_articles(const zim::Archive& archive, ErrorLogger& reporter, ProgressBar progress,
-                   bool redundant_data, bool url_check, bool url_check_external, bool empty_check);
+                   bool redundant_data, bool url_check, bool url_check_external, bool empty_check,
+                   int thread_count=1);
 
 #endif

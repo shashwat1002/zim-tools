@@ -88,6 +88,7 @@ int main (int argc, char **argv)
     bool integrity = false;
     bool url_check = false;
     bool url_check_external = false;
+    int thread_count = 1;
     bool empty_check = false;
     bool mime_check = false;
     bool error_details = false;
@@ -118,12 +119,13 @@ int main (int argc, char **argv)
             { "url_external", no_argument, 0, 'X'},
             { "mime",         no_argument, 0, 'E'},
             { "details",      no_argument, 0, 'D'},
+            { "threads",      required_argument, 0, 'j'},
             { "help",         no_argument, 0, 'H'},
             { "version",      no_argument, 0, 'V'},
             { 0, 0, 0, 0}
         };
         int option_index = 0;
-        int c = getopt_long (argc, argv, "ACIMFPRUXEDHBVacimfpruxedhbv",
+        int c = getopt_long (argc, argv, "ACIMFPRUXEDHBVJ:acimfpruxedhbvj:",
                              long_options, &option_index);
         //c = getopt (argc, argv, "ACMFPRUXED");
         if(c == -1)
@@ -190,6 +192,10 @@ int main (int argc, char **argv)
         case 'D':
         case 'd':
             error_details = true;
+            break;
+        case 'J':
+        case 'j':
+            thread_count = atoi(optarg);
             break;
         case 'H':
         case 'h':
@@ -308,7 +314,7 @@ int main (int argc, char **argv)
          */
 
         if ( redundant_data || url_check || url_check_external || empty_check )
-          test_articles(archive, error, progress, redundant_data, url_check, url_check_external, empty_check);
+          test_articles(archive, error, progress, redundant_data, url_check, url_check_external, empty_check, thread_count);
 
 
         //Test 8: Verifying MIME Types
