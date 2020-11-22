@@ -95,18 +95,21 @@ public: // types
     typedef std::vector<html_link> LinkCollection;
 
 public: // functions
-    ArticleChecker(const zim::Archive& _archive, ErrorLogger& _reporter, bool _redundant_data, bool _url_check, bool _url_check_external, bool _empty_check)
+    ArticleChecker(const zim::Archive& _archive, ErrorLogger& _reporter, ProgressBar& _progress, bool _redundant_data, bool _url_check, bool _url_check_external, bool _empty_check)
         : archive(_archive)
         , reporter(_reporter)
+        , progress(_progress)
         , redundant_data(_redundant_data)
         , url_check(_url_check)
         , url_check_external(_url_check_external)
         , empty_check(_empty_check)
-    {}
+    {
+        progress.reset(archive.getEntryCount());
+    }
 
 
     void check(zim::Entry entry);
-    void detect_redundant_articles(ProgressBar& progress);
+    void detect_redundant_articles();
 
 private: // types
     typedef std::vector<std::string> StringCollection;
@@ -122,6 +125,7 @@ private: // functions
 private: // data
     const zim::Archive& archive;
     ErrorLogger& reporter;
+    ProgressBar& progress;
     const bool redundant_data;
     const bool url_check;
     const bool url_check_external;
@@ -133,6 +137,8 @@ private: // data
 
 void ArticleChecker::check(zim::Entry entry)
 {
+    progress.report();
+
     const auto path = entry.getPath();
     const char ns = archive.hasNewNamespaceScheme() ? 'C' : path[0];
 
@@ -264,7 +270,7 @@ void ArticleChecker::check_external_links(zim::Item item, const LinkCollection& 
     }
 }
 
-void ArticleChecker::detect_redundant_articles(ProgressBar& progress)
+void ArticleChecker::detect_redundant_articles()
 {
     std::cout << "[INFO] Searching for redundant articles..." << std::endl;
     std::cout << "  Verifying Similar Articles for redundancies..." << std::endl;
@@ -429,23 +435,20 @@ private: // data
 
 } // unnamed namespace
 
-void test_articles(const zim::Archive& archive, ErrorLogger& reporter, ProgressBar progress,
+void test_articles(const zim::Archive& archive, ErrorLogger& reporter, ProgressBar& progress,
                    bool redundant_data, bool url_check, bool url_check_external, bool empty_check,
                    int thread_count) {
-    ArticleChecker articleChecker(archive, reporter, redundant_data, url_check, url_check_external, empty_check);
+    ArticleChecker articleChecker(archive, reporter, progress, redundant_data, url_check, url_check_external, empty_check);
     std::cout << "[INFO] Verifying Articles' content..." << std::endl;
 
-    progress.reset(archive.getEntryCount());
     TaskDispatcher td(&articleChecker, thread_count);
     for (auto& entry:archive.iterEfficient()) {
-        progress.report();
-
         td.addTask(entry);
     }
     td.waitForAllTasksToComplete();
 
     if (redundant_data)
     {
-        articleChecker.detect_redundant_articles(progress);
+        articleChecker.detect_redundant_articles();
     }
 }
