@@ -406,3 +406,10 @@ UriKind html_link::detectUriKind(const std::string& input_string)
     return specialUriSchemeKind(scheme);
 }
 
+
+bool guess_is_front_article(const zim::Item& item) {
+  auto mimetype = item.getMimetype();
+  return ( mimetype.find("text/html") != std::string::npos
+        && mimetype.find("raw=true") == std::string::npos);
+}
+
