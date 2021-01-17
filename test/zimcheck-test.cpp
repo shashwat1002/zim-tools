@@ -87,6 +87,27 @@ public:
   operator std::string() const { return buffer.str(); }
 };
 
+class CapturedStderr
+{
+  std::ostringstream buffer;
+  std::streambuf* const sbuf;
+public:
+  CapturedStderr()
+    : sbuf(std::cerr.rdbuf())
+  {
+    std::cerr.rdbuf(buffer.rdbuf());
+  }
+
+  CapturedStderr(const CapturedStderr&) = delete;
+
+  ~CapturedStderr()
+  {
+    std::cerr.rdbuf(sbuf);
+  }
+
+  operator std::string() const { return buffer.str(); }
+};
+
 int zimcheck (const std::vector<const char*>& args);
 
 const std::string zimcheck_help_message(
@@ -153,6 +174,18 @@ TEST(zimcheck, version)
       CapturedStdout zimcheck_output;
       ASSERT_EQ(0, zimcheck({"zimcheck", "--version"}));
       ASSERT_EQ(zimcheck_version + "\n", std::string(zimcheck_output));
+    }
+}
+
+TEST(zimcheck, nozimfile)
+{
+    const std::string expected_stderr = "No file provided as argument\n";
+    {
+      CapturedStdout zimcheck_output;
+      CapturedStderr zimcheck_stderr;
+      ASSERT_EQ(-1, zimcheck({"zimcheck"}));
+      ASSERT_EQ(expected_stderr, std::string(zimcheck_stderr));
+      ASSERT_EQ(zimcheck_help_message, std::string(zimcheck_output));
     }
 }
 
